@@ -8,7 +8,7 @@
 # author.
 
 CC = gcc
-CFLAGS += -std=c17 -g -Wall -O0
+CFLAGS += -std=c17 -g -Wall -O0 -fsanitize=address
 OBJS = hello_world.o
 
 # Compile everything; this is the default rule that fires if a user
