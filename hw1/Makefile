@@ -14,10 +14,10 @@ CC = gcc
 CXX = g++
 
 # define useful flags to cc/ld/etc.
-CFLAGS += -g -Wall -Wpedantic -I. -I.. -std=c17 -O0
-CXXFLAGS += -g -Wall -Wpedantic -I. -I.. -std=c++17 -O0
+CFLAGS += -g -Wall -Wpedantic -I. -I/opt/homebrew/include -std=c17 -O0 -fsanitize=address
+CXXFLAGS += -g -Wall -Wpedantic -I. -I/opt/homebrew/include -std=c++17 -O0 -fsanitize=address
 LDFLAGS += -L. -lhw1
-CPPUNITFLAGS = -L../gtest -lgtest
+CPPUNITFLAGS = -L/opt/homebrew/lib -lgtest
 
 # define common dependencies
 OBJS = LinkedList.o HashTable.o CSE333.o
@@ -39,7 +39,7 @@ libhw1.a: $(OBJS) $(HEADERS)
 
 test_suite: $(TESTOBJS) libhw1.a
 	$(CXX) $(CFLAGS) -o test_suite $(TESTOBJS) \
-	$(CPPUNITFLAGS) $(LDFLAGS) -lpthread $(LDFLAGS)
+	$(CPPUNITFLAGS) $(LDFLAGS) -lpthread
 
 %.o: %.cc $(HEADERS)
 	$(CXX) $(CXXFLAGS) -c $<

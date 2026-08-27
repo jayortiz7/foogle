@@ -26,6 +26,8 @@
 // Grows the hashtable (ie, increase the number of buckets) if its load
 // factor has become too high.
 static void MaybeResize(HashTable *ht);
+static bool HashTable_Chain_Search(LLIterator *iter, HTKey_t key, LLPayload_t *payload);
+
 
 int HashKeyToBucketNum(HashTable *ht, HTKey_t key) {
   return key % ht->num_buckets;
@@ -138,7 +140,26 @@ bool HashTable_Insert(HashTable *table,
   // all that logic inside here.  You might also find that your helper
   // can be reused in steps 2 and 3.
 
-  return 0;  // you may need to change this return value
+  //  initialize new iterator to parse through linked list
+  LLIterator *iter = LLIterator_Allocate(chain);
+
+  //  allocate memory to store and return previous key value pair 
+  //  and insert new key value pair
+  LLPayload_t *payload = (LLPayload_t*) malloc(sizeof(LLPayload_t));
+  //  parse through linked list iterator to find old key value pair
+  //  if found, store to be returned and update new key value pair
+  //  return true
+  if (HashTable_Chain_Search(iter, newkeyvalue.key, payload)) {
+    oldkeyvalue = (HTKeyValue_t*)&payload;
+    payload = (LLPayload_t*)&newkeyvalue;
+    return true;
+  //  else append new key value pair to linked list and return false
+  } else {
+    *payload = (LLPayload_t*)&newkeyvalue;
+    LinkedList_Append(chain, payload);
+    table->num_elements++;
+    return false;
+  }
 }
 
 bool HashTable_Find(HashTable *table,
@@ -147,8 +168,24 @@ bool HashTable_Find(HashTable *table,
   Verify333(table != NULL);
 
   // STEP 2: implement HashTable_Find.
+  // Calculate which bucket and chain we're inserting into.
+  int bucket;
+  LinkedList *chain;
+  bucket = HashKeyToBucketNum(table, key);
+  chain = table->buckets[bucket];
+  //  initialize new iterator to parse through linked list 
+  LLIterator *iter = LLIterator_Allocate(chain);
+  //  allocate memory to store desired key value pair in linked list
+  LLPayload_t *payload = (LLPayload_t*) malloc(sizeof(LLPayload_t));
 
-  return false;  // you may need to change this return value
+  //  parse through linked list iterator to find given key 
+  //  if found store copy of key value pair and return true
+  if (HashTable_Chain_Search(iter, key, payload)) {
+    keyvalue = (HTKeyValue_t*) payload;
+    return true;
+  }
+  // else return false
+  return false;
 }
 
 bool HashTable_Remove(HashTable *table,
@@ -157,8 +194,26 @@ bool HashTable_Remove(HashTable *table,
   Verify333(table != NULL);
 
   // STEP 3: implement HashTable_Remove.
+    // Calculate which bucket and chain we're inserting into.
+  int bucket;
+  LinkedList *chain;
+  bucket = HashKeyToBucketNum(table, key);
+  chain = table->buckets[bucket];
+  //  initialize new iterator to parse through linked list 
+  LLIterator *iter = LLIterator_Allocate(chain);
+  //  allocate memory to store desired key value pair in linked list
+  LLPayload_t *payload = (LLPayload_t*) malloc(sizeof(LLPayload_t));
 
-  return 0;  // you may need to change this return value
+  //  parse through linked list to find given key
+  //  if found store copy of key value pair, remove from linked list, 
+  //  and return true
+  if (HashTable_Chain_Search(iter, key, payload)) {
+    keyvalue = (HTKeyValue_t*) payload;
+    LLIterator_Remove(iter, LLNoOpFree);
+    return true;
+  }
+  //  else return false
+  return false;
 }
 
 
@@ -210,24 +265,49 @@ bool HTIterator_IsValid(HTIterator *iter) {
   Verify333(iter != NULL);
 
   // STEP 4: implement HTIterator_IsValid.
-
-  return true;  // you may need to change this return value
+  //  check that ht != null
+  //  check that ht->buckets[bucket_idx] != null
+  //  check that iter->bucket_it != null
+  //  check that iter->bucket_it->node != null
+  Verify333(iter->ht != NULL);
+  Verify333(iter->bucket_idx < iter->ht->num_buckets);
+  Verify333(iter->ht->buckets[iter->bucket_idx] != NULL);
+  return LLIterator_IsValid(iter->bucket_it);
 }
 
 bool HTIterator_Next(HTIterator *iter) {
   Verify333(iter != NULL);
 
   // STEP 5: implement HTIterator_Next.
-
-  return true;  // you may need to change this return value
+  //  check that hashtable iterator is valid
+  if (HTIterator_IsValid(iter)) {
+    //  check if linked list iterator can be advanced and return true
+    if (LLIterator_Next(iter->bucket_it)) {
+      return true;
+    }
+    //  else check if hashtable iterator has a next linked list iterator
+    //  advance to next linked list iterator and check if it is valid
+    //  return true if new linked list iterator is valid else return false
+    if (iter->bucket_idx + 1 < iter->ht->num_buckets) {
+      iter->bucket_idx++;
+      iter->bucket_it = LLIterator_Allocate(iter->ht->buckets[iter->bucket_idx]);
+      return LLIterator_IsValid(iter->bucket_it);
+    }
+  }
+  return false;
 }
 
 bool HTIterator_Get(HTIterator *iter, HTKeyValue_t *keyvalue) {
   Verify333(iter != NULL);
 
   // STEP 6: implement HTIterator_Get.
-
-  return true;  // you may need to change this return value
+  if (HTIterator_IsValid(iter)) {
+    LLIterator_Get(iter->bucket_it, (LLPayload_t) keyvalue);
+    if (keyvalue != NULL) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool HTIterator_Remove(HTIterator *iter, HTKeyValue_t *keyvalue) {
@@ -289,4 +369,24 @@ static void MaybeResize(HashTable *ht) {
   // Done!  Clean up our iterator and temporary table.
   HTIterator_Free(it);
   HashTable_Free(newht, &HTNoOpFree);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Helper functions
+
+//  parse through chain to find given key
+//  return true if found 
+//  return false otherwise
+static bool HashTable_Chain_Search(LLIterator* iter, 
+                      HTKey_t key,
+                      LLPayload_t* payload) {
+  while (LLIterator_IsValid(iter)) {
+    LLIterator_Get(iter, payload);
+    HTKeyValue_t* current = (HTKeyValue_t*) payload;
+    if ((current->key) == key) {
+      return true;
+    }
+    LLIterator_Next(iter);
+  }
+  return false;
 }
