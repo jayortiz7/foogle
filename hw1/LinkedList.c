@@ -272,27 +272,36 @@ bool LLIterator_Remove(LLIterator *iter,
 
   // handle all four cases
   if (iter->list->num_elements == 1) {  // only one node in list
-    payload_free_function(iter->node->payload);
-    iter->list->num_elements--;
+    LinkedListNode *old_node = iter->node;
+    payload_free_function(old_node->payload);
     iter->list->head = iter->list->tail = iter->node = NULL;
-    iter = NULL;
+    free(old_node);
+    iter->list->num_elements--;
     return false;
   } else if (iter->node == iter->list->head) {  // current node is also head of list
-    payload_free_function(iter->node->payload);
-    iter->list->head = iter->list->head->next;
+    LinkedListNode *old_node = iter->node;
+    payload_free_function(old_node->payload);
+    iter->list->head = old_node->next;
+    iter->list->head->prev = NULL;
+    iter->node = iter->list->head;
+    free(old_node);
     iter->list->num_elements--;
-    iter->node = iter->node->next;
-    iter->node->prev = NULL;
     return true;
   } else if (iter->node == iter->list->tail) {  // current node is also tail of list
-    payload_free_function(iter->list->tail->payload);
+    LLPayload_t tail_payload;
     iter->node = iter->node->prev;
-    return LLSlice(iter->list, &iter->list->tail->payload);
+    if (!LLSlice(iter->list, &tail_payload)) {
+      return false;
+    }
+    payload_free_function(tail_payload);
+    return true;
   } else {  // current node is somewhere in the middle of the list
-    payload_free_function(iter->node->payload);
-    iter->node->prev->next = iter->node->next;
-    iter->node->next->prev = iter->node->prev;
-    iter->node = iter->node->next;
+    LinkedListNode *old_node = iter->node;
+    payload_free_function(old_node->payload);
+    old_node->prev->next = old_node->next;
+    old_node->next->prev = old_node->prev;
+    iter->node = old_node->next;
+    free(old_node);
     iter->list->num_elements--;
     return true;
   }

@@ -104,6 +104,7 @@ int Test_HashTable::freeInvocations_;
 //
 // 'k' is the key to insert, 'k_idx' is the index in the table's bucket list
 // at which the table will insert 'k'.
+// TODO: hashtable test failing here
 static void TestInsertAndFind(HashTable *table, HTKey_t k, int k_idx) {
   HTValue_t v
     = reinterpret_cast<HTValue_t>(k * 100);  // we promptly overwrite this
@@ -123,7 +124,7 @@ static void TestInsertAndFind(HashTable *table, HTKey_t k, int k_idx) {
   ASSERT_FALSE(HashTable_Find(table, k, &oldkv));
 
   // (1) Insert this key for the first time.
-  ASSERT_FALSE(HashTable_Insert(table, newkv, &oldkv));
+  ASSERT_FALSE(HashTable_Insert(table, newkv, &oldkv)); // the way it is being inserted is wrong because it isn't being pulled correctly
   ASSERT_EQ(orig_list_size + 1, LinkedList_NumElements(pl));
   ASSERT_EQ(static_cast<HTKey_t>(kMagicNum), oldkv.key);
   ASSERT_EQ(reinterpret_cast<HTValue_t>(kMagicNum), oldkv.value);
