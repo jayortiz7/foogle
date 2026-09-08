@@ -103,9 +103,10 @@ void MemIndex_AddPostingList(MemIndex *index, char *word, DocID_t doc_id,
   // Remove this early return.  We added this in here so that your unittests
   // would pass even if you haven't finished your MemIndex implementation.
 
-
   // First, we have to see if the passed-in word already exists in
   // the inverted index.
+  
+  
   if (!HashTable_Find(index, key, &mi_kv)) {
     // STEP 2.
     // No, this is the first time the inverted index has seen this word.  We
@@ -118,8 +119,9 @@ void MemIndex_AddPostingList(MemIndex *index, char *word, DocID_t doc_id,
     //       mapping.
     //   (3) insert the the new WordPostings into the inverted index (ie, into
     //       the "index" table).
+
     wp = (WordPostings*) malloc(sizeof(WordPostings));
-    wp->word = strdup(word);
+    wp->word = word;
     wp->postings = HashTable_Allocate(HASHTABLE_INITIAL_NUM_BUCKETS);
     mi_kv.key = key;
     mi_kv.value = (HTValue_t) wp;
@@ -154,6 +156,8 @@ void MemIndex_AddPostingList(MemIndex *index, char *word, DocID_t doc_id,
   // The entry's key is this docID and the entry's value
   // is the "postings" (ie, word positions list) we were passed
   // as an argument.
+  postings_kv.key = doc_id;
+  postings_kv.value = (HTValue_t) postings;
   HashTable_Insert(wp->postings, postings_kv, &unused);
 }
 
@@ -179,12 +183,35 @@ LinkedList* MemIndex_Search(MemIndex *index, char *query[], int query_len) {
   // appears in that document).  Finally, append the SearchResult onto ret_list.
   key = FNVHash64((unsigned char*) query[0], strlen(query[0]));
   if (HashTable_Find(index, key, &kv)) {
+    HTIterator *wp_it;
+    HTKeyValue_t doc_kv;
+
     wp = (WordPostings*) kv.value;
     ret_list = LinkedList_Allocate();
     
-    
-  }
+    wp_it = HTIterator_Allocate(wp->postings);
+    Verify333(wp_it != NULL);
+    while (HTIterator_IsValid(wp_it)) {
+      SearchResult *sr;
+      LinkedList *doc_postings;
 
+      HTIterator_Get(wp_it, &doc_kv);
+
+      sr = (SearchResult*) malloc(sizeof(SearchResult));
+      Verify333(sr != NULL);
+      sr->doc_id = doc_kv.key;
+      doc_postings = (LinkedList*) doc_kv.value;
+      sr->rank = LinkedList_NumElements(doc_postings);
+
+      LinkedList_Append(ret_list, (LLPayload_t) sr);
+      HTIterator_Next(wp_it);
+    }
+    HTIterator_Free(wp_it);
+  } else {
+    // No documents matched the first query word, so return NULL to indicate
+    // failure.
+    return NULL;
+  }
 
   // Great; we have our search results for the first query
   // word.  If there is only one query word, we're done!
@@ -204,8 +231,19 @@ LinkedList* MemIndex_Search(MemIndex *index, char *query[], int query_len) {
     // Look up the next query word (query[i]) in the inverted index.
     // If there are no matches, it means the overall query
     // should return no documents, so free ret_list and return NULL.
+    ll_it = LLIterator_Allocate(ret_list);
+    Verify333(ll_it != NULL);
+    num_docs = LinkedList_NumElements(ret_list);
+    HTKey_t word_key;
+    HTKeyValue_t word_kv;
+    WordPostings *word_wp;
 
-
+    word_key = FNVHash64((unsigned char*) query[i], strlen(query[i]));
+    if (!HashTable_Find(index, word_key, &word_kv)) {
+      LinkedList_Free(ret_list, (LLPayloadFreeFnPtr)free);
+      return NULL;
+    }
+    word_wp = (WordPostings*) word_kv.value;
 
     // STEP 6.
     // There are matches.  We're going to iterate through
@@ -222,6 +260,20 @@ LinkedList* MemIndex_Search(MemIndex *index, char *query[], int query_len) {
     Verify333(ll_it != NULL);
     num_docs = LinkedList_NumElements(ret_list);
     for (j = 0; j < num_docs; j++) {
+      SearchResult *sr;
+      LLPayload_t payload;
+      HTKeyValue_t doc_kv;
+
+      LLIterator_Get(ll_it, &payload);
+      sr = (SearchResult*) payload;
+
+      if (HashTable_Find(word_wp->postings, (HTKey_t) sr->doc_id, &doc_kv)) {
+        LinkedList *doc_postings = (LinkedList*) doc_kv.value;
+        sr->rank += LinkedList_NumElements(doc_postings);
+        LLIterator_Next(ll_it);
+      } else {
+        LLIterator_Remove(ll_it, (LLPayloadFreeFnPtr) free);
+      }
     }
     LLIterator_Free(ll_it);
 

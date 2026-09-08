@@ -73,8 +73,12 @@ char* ReadFileToString(const char *file_name, int *size) {
   // Use the stat system call to fetch a "struct stat" that describes
   // properties of the file. ("man 2 stat"). You can assume we're on a 64-bit
   // system, with a 64-bit off_t field.
-  stat(file_name, &file_stat);
-  
+  result = stat(file_name, &file_stat);
+  if (result != 0) {
+    // handle file open err
+    fprintf(stderr, "Error stating the file. \n");
+    return NULL;
+  }
 
 
   // STEP 2.
@@ -122,20 +126,17 @@ char* ReadFileToString(const char *file_name, int *size) {
   //  parse until EOF
   while (left_to_read > 0) {
     //  try read and handle possible errors
-    num_read = read(fd, buf + num_read, left_to_read);
+    num_read = read(fd, buf + (file_stat.st_size - left_to_read), left_to_read);
     //  possible read error
     if (num_read == -1) {
-      if (errno != EINTR) {
-        //  try again or handle error and return null
-        if (errno == EAGAIN) {
-          num_read =read(fd, buf + (num_read - left_to_read), left_to_read);
-        } else {
-          fprintf(stderr, "Error reading the file. Try again. \n");
-          return NULL;
-        }
+      if (errno == EINTR || errno == EAGAIN) {
+        continue;
+      } else {
+        fprintf(stderr, "Error reading the file. \n");
+        close(fd);
+        free(buf);
+        return NULL;
       }
-      continue;
-      // end of file
     } else if (num_read == 0) {
       break;
     }
@@ -211,7 +212,7 @@ void FreeWordPositionsTable(HashTable *table) {
 
 static void InsertContent(HashTable *tab, char *content) {
   char *cur_ptr = content,
-    *word_start = content;
+    *word_start = NULL;
 
   // STEP 6.
   // This is the interesting part of Part A!

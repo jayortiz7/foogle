@@ -116,7 +116,7 @@ static void HandleDir(char *dirpath, DIR *d, DocTable **doctable,
       malloc(sizeof(struct entry_st) * entries_capacity);
   Verify333(entries != NULL);
 
-  int i;
+  int i = 0;
   int path_name_len;
   struct dirent *dirent;
   struct stat st;
@@ -129,7 +129,7 @@ static void HandleDir(char *dirpath, DIR *d, DocTable **doctable,
   // Change/add to this loop to use the "readdir()" system call to
   // read the directory entries in the loop ("man 3 readdir").
   // Exit out of the loop when we reach the end of the directory.
-  for (i = 0; (dirent = readdir(d)) != NULL; i++) {
+  while ((dirent = readdir(d)) != NULL) {
     // STEP 2.
     // If the directory entry is named "." or "..", ignore it.  Use the C
     // "continue" expression to begin the next iteration of the loop.  What
@@ -138,11 +138,7 @@ static void HandleDir(char *dirpath, DIR *d, DocTable **doctable,
     if (strcmp(dirent->d_name, ".") == 0 || strcmp(dirent->d_name, "..") == 0) {
       continue;
     }
-
-    //
-    // Record the name and directory status.
-    //
-
+    
     // Resize the entries array if it's too small.
     if (i == entries_capacity) {
       entries_capacity *= 2;
@@ -158,13 +154,9 @@ static void HandleDir(char *dirpath, DIR *d, DocTable **doctable,
     entries[i].path_name = (char*) malloc(path_name_len * sizeof(char));
     Verify333(entries[i].path_name != NULL);
     if (dirpath[strlen(dirpath)-1] == '/') {
-      // No need to add an additional '/'.
-      snprintf(entries[i].path_name, path_name_len,
-               "%s%s", dirpath, dirent->d_name);
+      snprintf(entries[i].path_name, path_name_len, "%s%s", dirpath, dirent->d_name);
     } else {
-      // We do need to add an additional '/'.
-      snprintf(entries[i].path_name, path_name_len,
-               "%s/%s", dirpath, dirent->d_name);
+      snprintf(entries[i].path_name, path_name_len, "%s/%s", dirpath, dirent->d_name);
     }
 
     // Use the "stat()" system call to ask the operating system to give us
@@ -177,21 +169,25 @@ static void HandleDir(char *dirpath, DIR *d, DocTable **doctable,
       // described in "man 2 stat").  If so, we'll process the file by
       // eventually invoking the HandleFile() private helper function in our
       // second pass.
-      //
-      if (!S_ISREG(st.st_mode)) {
-        if (!S_ISDIR(st.st_mode)) {
-          continue;
-        }
-      }
-
       // On the other hand, if the file turns out to be a directory (which you
       // can find out using the S_ISDIR() macro. Again, look it up if you don't
       // know how to use it), then we'll need to recursively process i
       // using/ HandleDir() in our second pass.
       //
       // If it is neither, skip the file.
+      if (S_ISREG(st.st_mode)) {
+        entries[i].is_dir = false;
+        i++;
+      } else if (S_ISDIR(st.st_mode)) {
+        entries[i].is_dir = true;
+        i++;
+      } else {
+        free(entries[i].path_name);
+      }
+    } else {
+      free(entries[i].path_name);
     }
-  }  // end iteration over directory contents ("first pass").
+  }// end iteration over directory contents ("first pass").
 
   // Sort the directory's metadata alphabetically.
   num_entries = i;
@@ -217,25 +213,33 @@ static void HandleDir(char *dirpath, DIR *d, DocTable **doctable,
 
 static void HandleFile(char *file_path, DocTable **doctable,
                        MemIndex **index) {
-  //int file_len = 0;
   HashTable *tab = NULL;
   DocID_t doc_id;
   HTIterator *it;
+  char *contents;
+  int size;
+
+  //check if the file is ASCII text
+  contents = ReadFileToString(file_path, &size);
+  if (contents == NULL) {
+    return;
+  }
 
   // STEP 4.
   // Invoke ParseIntoWordPositionsTable() to build the word hashtable out
   // of the file.
-  tab = ParseIntoWordPositionsTable(file_path);
-
-
+  tab = ParseIntoWordPositionsTable(contents);
+  if (tab == NULL) {
+    return;
+  }
+  
   // STEP 5.
   // Invoke DocTable_Add() to register the new file with the doctable.
   doc_id = DocTable_Add(*doctable, file_path);
 
-
-  // Loop through the newly-built hash table.
   it = HTIterator_Allocate(tab);
   Verify333(it != NULL);
+
   while (HTIterator_IsValid(it)) {
     WordPositions *wp;
     HTKeyValue_t kv;
@@ -247,17 +251,7 @@ static void HandleFile(char *file_path, DocTable **doctable,
     HTIterator_Remove(it, &kv);
     wp = kv.value;
     MemIndex_AddPostingList(*index, wp->word, doc_id, wp->positions);
-
-
-    // Since we've transferred ownership of the memory associated with both
-    // the "word" and "positions" field of this WordPositions structure, and
-    // since we've removed it from the table, we can now free the
-    // WordPositions structure!
     free(wp);
   }
   HTIterator_Free(it);
-
-  // We're all done with the word hashtable for this file, since we've added
-  // all of its contents to the inverted index. Free the table and return.
-  FreeWordPositionsTable(tab);
 }

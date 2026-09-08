@@ -344,17 +344,32 @@ bool HTIterator_Remove(HTIterator *iter, HTKeyValue_t *keyvalue) {
     return false;
   }
 
-  // Advance the iterator.  Thanks to the above call to
-  // HTIterator_Get, we know that this iterator is valid (though it
-  // may not be valid after this call to HTIterator_Next).
-  HTIterator_Next(iter);
+  *keyvalue = kv;
+  // Remove the current element directly via the same LLIterator that's
+  // tracking our position, so the removal and repositioning happen atomically
+  // and stay consistent with iter's own bookkeeping.
+  LLIterator_Remove(iter->bucket_it, &LLNoOpFree);
+  iter->ht->num_elements--;
 
-  // Lastly, remove the element.  Again, we know this call will succeed
-  // due to the successful HTIterator_Get above.
-  Verify333(HashTable_Remove(iter->ht, kv.key, keyvalue));
-  Verify333(kv.key == keyvalue->key);
-  Verify333(kv.value == keyvalue->value);
+  // iter->bucket_it may now be invalid (we removed the last node in this
+  // bucket's chain) -- if so, advance to the next non-empty bucket, the 
+  // same way HTIterator_Next() does.
+  if (!LLIterator_IsValid(iter->bucket_it)) {
+    LLIterator_Free(iter->bucket_it);
+    iter->bucket_it = NULL;
 
+    int i = iter->bucket_idx + 1;
+    while (i < iter->ht->num_buckets &&
+           LinkedList_NumElements(iter->ht->buckets[i]) == 0) {
+      i++;
+    }
+    if (i < iter->ht->num_buckets) {
+      iter->bucket_idx = i;
+      iter->bucket_it = LLIterator_Allocate(iter->ht->buckets[i]);
+    } else {
+      iter->bucket_idx = iter->ht->num_buckets;
+    }
+  }
   return true;
 }
 

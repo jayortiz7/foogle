@@ -320,29 +320,31 @@ bool LLSlice(LinkedList *list, LLPayload_t *payload_ptr) {
     // check that head and tail pointers are not null
     Verify333(list->head != NULL);
     Verify333(list->tail != NULL);
+    LinkedListNode *old_node = list->head;
     // set pointer to payload at the head of LinkedList
-    *payload_ptr = list->tail->payload;
+    *payload_ptr = old_node->payload;
     // empty list and return true
     list->head = list->tail = NULL;
     list->num_elements = 0;
     // free memory allocated 
-    free(list->head);
+    free(old_node);
     return true;
   } else if (list->num_elements > 1) {
     // check that head and tail pointers are not null
     Verify333(list->head != NULL);
     Verify333(list->tail != NULL);
-    // set pointer to payloat at the head of LinkedList
-    *payload_ptr = list->tail->payload;
+    LinkedListNode *old_tail = list->tail;
+    // set pointer to payload at the head of LinkedList
+    *payload_ptr = old_tail->payload;
     // set list tail pointer to prev node
-    list->tail = list->tail->prev;
+    list->tail = old_tail->prev;
 
     // remove prev tail from list
-    list->head->prev = list->tail->next = NULL;
+    list->tail->next = NULL;
     // decrement num_elements counter 
     list->num_elements--;
     // free memory allocated by append
-    free(list->tail->next);
+    free(old_tail);
     return true;
   } 
   // return false for empty lists

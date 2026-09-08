@@ -42,11 +42,16 @@ DocTable* DocTable_Allocate(void) {
 // Deallocation function that does nothing.
 static void HTNoOpFree(HTValue_t freeme) { }
 
+// Deallocation function for freeing a document name string.
+static void DocNameFree(HTValue_t freeme) {
+  free((char*) freeme);  
+}
+
 void DocTable_Free(DocTable *table) {
   Verify333(table != NULL);
 
   // STEP 1.
-  HashTable_Free(table->id_to_name, HTNoOpFree);
+  HashTable_Free(table->id_to_name, DocNameFree);
   HashTable_Free(table->name_to_id, HTNoOpFree);
 
   free(table);
@@ -70,16 +75,13 @@ DocID_t DocTable_Add(DocTable* table, char* doc_name) {
   // doc_name and allocate space for the new ID.
   HTKey_t hash_key = FNVHash64((unsigned char*) doc_name, strlen(doc_name));
   if (HashTable_Find(table->name_to_id, hash_key, &old_kv)) {
-    res = (DocID_t) old_kv.value;
+    res = *(DocID_t*) old_kv.value;
     return res;
   }
-  doc_copy = doc_name;
+  doc_copy = strdup(doc_name);
   doc_id = (DocID_t*) malloc(sizeof(DocID_t));
-
-
   *doc_id = table->max_id;
   table->max_id++;
-
 
   // STEP 3.
   // Set up the key/value for the id->name mapping, and do the insert.
@@ -94,11 +96,11 @@ DocID_t DocTable_Add(DocTable* table, char* doc_name) {
   // You want to be sure that how you do this is consistent with
   // the provided code.
   kv.key = hash_key;
-  kv.value = (HTValue_t*) *doc_id;
+  kv.value = (HTValue_t) doc_id;
   HashTable_Insert(table->name_to_id, kv, &old_kv);
 
-
-  return *doc_id;
+  res = *(DocID_t*) kv.value;
+  return res;
 }
 
 DocID_t DocTable_GetDocID(DocTable *table, char *doc_name) {
@@ -113,7 +115,7 @@ DocID_t DocTable_GetDocID(DocTable *table, char *doc_name) {
   // Try to find the passed-in doc in name_to_id table.
   key = FNVHash64((unsigned char*) doc_name, strlen(doc_name));
   if (HashTable_Find((HashTable*)table->name_to_id, key, &kv)) {
-    res = (DocID_t) kv.value;
+    res = *(DocID_t*) kv.value;
     return res;
   }
 
